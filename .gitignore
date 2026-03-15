@@ -1,0 +1,27 @@
+# Suricata logs
+*.log
+eve.json
+suricata.log
+
+# Splunk data
+splunk/var/
+splunk/indexes/
+splunk/logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python cache (if scripts are used)
+__pycache__/
+*.pyc
+
+# Temporary files
+*.tmp
+*.swp
+
+# Environment variables
+.env
+
+# Virtual environments
+venv/

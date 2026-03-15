@@ -1,0 +1,106 @@
+# Local test ICMP rule
+alert icmp any any -> any any (msg:"LOCAL ICMP Test Alert"; sid:1001000; rev:1;)
+
+# SQL injection heuristic (URI-based)
+alert http any any -> any any (msg:"LOCAL SQLi attempt (heuristic)"; flow:to_server,established; http.uri; pcre:"/(\bunion\b.*\bselect\b|\bselect\b.*\bfrom\b|\bor\s+1=1\b)/i"; sid:1001001; rev:1;)
+
+# Cross-site scripting (XSS) attempt in request body
+alert http any any -> any any (msg:"LOCAL XSS attempt (script tag)"; flow:to_server,established; http.request_body; pcre:"/<script\b[^>]*>/i"; sid:1001002; rev:1;)
+
+# Command injection attempt (common connectors + commands)
+alert http any any -> any any (msg:"LOCAL Command Injection attempt (heuristic)"; flow:to_server,established; http.request_body; pcre:"/(\;|\&\&|\|\|)\s*(ls|cat|whoami|id|/bin\/sh|/bin\/bash)/i"; sid:1001003; rev:1;)
+
+# Suspicious scanner user-agents (sqlmap, nikto, nmap, etc)
+alert http any any -> any any (msg:"LOCAL Suspicious user-agent (scanner)"; flow:to_server,established; http.user_agent; pcre:"/(sqlmap|nikto|nessus|masscan|nmap|acunetix|dirbuster|wfuzz)/i"; sid:1001004; rev:1;)
+
+# SSH brute-force heuristic: 5 connection attempts from same src in 60s
+alert tcp any any -> any 22 (msg:"LOCAL SSH brute-force heuristic"; threshold: type both, track by_src, count 5, seconds 60; sid:1001005; rev:1;)
+
+# RDP brute-force heuristic: 5 connections from same src in 60s
+alert tcp any any -> any 3389 (msg:"LOCAL RDP brute-force heuristic"; threshold: type both, track by_src, count 5, seconds 60; sid:1001006; rev:1;)
+
+# HTTP parameter names often used for remote exec/cmd
+alert http any any -> any any (msg:"LOCAL HTTP possible remote exec param"; flow:to_server,established; http.uri; pcre:"/(?:cmd=|exec=|command=|shell=)/i"; sid:1001007; rev:1;)
+alert icmp any any -> any any (msg:"ICMP Test Alert"; sid:1000001; rev:1;)
+alert tcp $HOME_NET any -> $EXTERNAL_NET 80 (msg:"HTTP Test Alert"; sid:1000002; rev:1;)
+
+# Detect Nmap scan
+alert tcp any any -> any any (msg:"Nmap TCP Scan Detected"; flags:S; threshold:type both, track by_src, count 5, seconds 3; sid:1002000; rev:1;)
+
+# Detect SSH brute force attempts
+alert tcp any any -> any 22 (msg:"Possible SSH Brute Force"; flow:to_server,established; threshold:type both, track by_src, count 10, seconds 60; sid:1002001; rev:1;)
+
+# Detect HTTP Shellshock attempt
+alert http any any -> any any (msg:"Shellshock Bash Vulnerability Attempt"; content:"() {"; http_header; nocase; sid:1002002; rev:1;)
+
+# Detect SMB traffic (Windows file sharing)
+alert tcp any any -> any 445 (msg:"SMB Access Detected"; flow:to_server,established; sid:1002003; rev:1;)
+
+# Detect Metasploit default payload pattern
+alert tcp any any -> any any (msg:"Metasploit Payload Activity"; content:"/bin/sh"; nocase; sid:1002004; rev:1;)
+
+
+###############################################################################
+#  Port scan / reconnaissance
+###############################################################################
+# SYN scan: alert when we see source send many SYNs within short period
+alert tcp any any -> any any (msg:"LOCAL SCAN Nmap-like SYN Scan"; flags:S; threshold: type both, track by_src, count 5, seconds 3; sid:1003000; rev:1;)
+
+# ICMP ping sweep: many ICMP echo requests to many hosts
+alert icmp any any -> any any (msg:"LOCAL SCAN ICMP Ping Sweep"; itype:8; threshold: type both, track by_src, count 10, seconds 10; sid:1003001; rev:1;)
+
+###############################################################################
+#  Brute-force / auth attempts
+###############################################################################
+# SSH brute force (many attempts to 22 from same source)
+alert tcp any any -> any 22 (msg:"LOCAL ATTACK Possible SSH Brute Force"; flow:to_server,established; threshold: type both, track by_src, count 10, seconds 60; sid:1003002; rev:1;)
+
+# RDP access (log any RDP connection attempts)
+alert tcp any any -> any 3389 (msg:"LOCAL INFO RDP Connection Attempt"; flow:to_server,established; sid:1003003; rev:1;)
+
+# SMB file access / negotiation (detect any SMB connect)
+alert tcp any any -> any 445 (msg:"LOCAL INFO SMB Access/Negotiation"; flow:to_server,established; sid:1003004; rev:1;)
+
+###############################################################################
+#  HTTP / Web attacks
+###############################################################################
+# Shellshock: look for suspicious '() {' in HTTP header values (User-Agent, Referer)
+alert http any any -> any any (msg:"LOCAL EXPLOIT Shellshock-like header"; http.header; content:"() {"; nocase; sid:1003005; rev:1;)
+
+# Simple SQLi attempt in URI (basic pattern)
+alert http any any -> any any (msg:"LOCAL WEB SQL Injection Attempt (basic)"; http.uri; pcre:"/(\%27|\'|\-\-|\%23|#)\s*(or|OR|Or|oR)\s+[^ ]+/"; sid:1003006; rev:1;)
+
+# Suspicious HTTP POST containing 'proc=[System Process]' (example metasploit/backdoor pattern)
+alert http any any -> any any (msg:"LOCAL WEB Suspicious POST body pattern"; http.request_body; content:"proc=[System Process]"; nocase; sid:1003007; rev:1;)
+
+###############################################################################
+#  Malware / C2 / backdoor generic
+###############################################################################
+# Common reverse-shell / unix shell indicator in payloads
+alert tcp any any -> any any (msg:"LOCAL MALWARE Possible Reverse Shell (/bin/sh found)"; content:"/bin/sh"; nocase; sid:1003008; rev:1;)
+
+# Detect simple base64-like beacon (short heuristic) - for lab only; tune carefully
+alert udp any any -> any any (msg:"LOCAL POSSIBLE C2 Base64-like ICMP/UDP Payload"; content:!"\\x00"; byte_test:4,>,8,0; content:"A"; threshold:type limit, track by_src, count 1, seconds 1; sid:1003009; rev:1;)
+
+###############################################################################
+#  Generic high-value detections
+###############################################################################
+# Windows admin tools (ipconfig, netstat, tasklist) via inbound ICMP (backdoor channels)
+alert icmp any any -> any any (msg:"LOCAL INFO Inbound ICMP Seen with 'ipconfig'"; itype:8; content:"ipconfig|20|"; nocase; sid:1003010; rev:1;)
+
+# Large ICMP payloads (possible tunnel/exfil)
+alert icmp any any -> any any (msg:"LOCAL SUSPICIOUS Large ICMP Payload"; itype:8; dsize:>512; sid:1003011; rev:1;)
+
+# Generic HTTP suspicious UA string placeholder (test)
+alert http any any -> any any (msg:"LOCAL INFO Suspicious User-Agent (contains 'masscan' or 'sqlmap')"; http.user_agent; pcre:"/(masscan|sqlmap|nessus|nikto)/Ri"; sid:1002012; rev:1;)
+
+###############################################################################
+#  Denylist / low-level network anomalies (examples)
+###############################################################################
+# Blatant malformed TCP flags (Xmas scan)
+alert tcp any any -> any any (msg:"LOCAL SCAN TCP Xmas Scan (FIN+PSH+URG)"; flags: FPU; sid:1002013; rev:1;)
+
+# ICMP unusual type/code (not echo request/reply)
+alert icmp any any -> any any (msg:"LOCAL INFO Unusual ICMP Type/Code"; itype:!=8; itype:!=0; sid:1002014; rev:1;)
+
+# End of local rules
